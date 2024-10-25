@@ -98,7 +98,7 @@ noeud_defaults = {
     'plage_max': None,
     'code_parent': None,
     'obligatoire_parent': True,
-    'est_mutualise': True,
+    'est_mutualise': False,
     'est_distanciel': False,
     'est_stage': False,
     'capacite_accueil': None,
