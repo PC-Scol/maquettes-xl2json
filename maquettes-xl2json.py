@@ -227,6 +227,13 @@ class NoeudMaquette:
 
             if msgs: print(val['code'], ': libellé long trop long, tronqué à', lg_max_libelle_long, file=sys.stderr)
 
+
+        #
+        # Les codes en majuscules
+        #
+        val['code'] = val['code'].upper()
+        if val['code_parent']: val['code_parent'] = val['code_parent'].upper()
+
         #
         # Traduire en type numérique une chaîne de chiffres
         #
