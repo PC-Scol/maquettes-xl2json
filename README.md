@@ -1,6 +1,7 @@
 # Objet
 Script Python permettant de lire des maquettes de formation dans un fichier Excel (ou csv/texte) et de les convertir dans le format JSON utilisé par la fonction d'importation de maquettes de Pégase.
 > [!NOTE]
+> Script testé sur chaque version Pégase depuis la V24
 > Aucune API n'a été maltraitée lors de la création de ce script.
 
 <p>&nbsp;</p>
