@@ -12,7 +12,9 @@ Usage       maquettes-xl2json.py [-n code,code,...] [-b] [-d] [fichier_excel[:i:
   -a        affiche une aide de type 'usage' consistant en les présentes lignes
   -n        liste des codes à renvoyer au format JSON, séparés par une virgule - si non présent, renvoie toutes les racines trouvées
   -b        renvoie les maquettes encodées en base64
+  -l        si présente, la présence des libellés n'est plus obligatoire (un libellé type sera généré automatiquement)
   -d        affiche des messages d'info pour suivre le déroulé de l'execution de la commande
+  -g        si présente, la construction de maquette échoue dès lors qu'un groupement est spécifié sans plage de choix
   -h        pour les cas désespérés : transmet les indices de colonnes (séparés par virgule) où se trouvent les données
             type d'objet, nature, code, libellé, libellé long, ects, code du noeud parent, plage min de groupement, plage max
 
@@ -29,7 +31,9 @@ Usage       {} [-n code,code,...] [-b] [-d] [fichier_excel[:i:j:k:...]] [fichier
   -a        affiche une aide de type 'usage' consistant en les présentes lignes
   -n        liste des codes à renvoyer au format JSON, séparés par une virgule - si non présent, renvoie toutes les racines trouvées
   -b        renvoie les maquettes encodées en base64
+  -l        si présente, la présence des libellés n'est plus obligatoire (un libellé type sera généré automatiquement)
   -d        affiche des messages d'info pour suivre le déroulé de l'execution de la commande
+  -g        si présente, la construction de maquette échoue dès lors qu'un groupement est spécifié sans plage de choix
   -h        pour les cas désespérés : transmet les indices de colonnes (séparés par virgule) où se trouvent les données
             type d'objet, nature, code, libellé, libellé long, ects, code du noeud parent, plage min de groupement, plage max
 """
@@ -55,6 +59,7 @@ b64 = False             # correspond à l'option -b
 msgs = False            # correspond à l'option -d
 noeuds_demandes = []    # correspond à l'option -n
 headers_param = dict()  # correspond à l'option -h
+verif_choix_groupements = False        # option -g
 
 #
 # Mapping des titres de colonnes dans un excel/csv avec les attributs d'un objet de la classe 'NoeudMaquette'
@@ -74,9 +79,34 @@ donnees_csv = {
     'Distanciel': 'est_distanciel',
     'Stage': 'est_stage',
     'Capacité accueil': 'capacite_accueil',
-    'Validé': 'est_valide',
     'Structure principale': 'structure_principale',
-    'ID objet': 'id_noeud'
+    'ID objet': 'id_noeud',
+    'Type formation': 'type_formation',
+    'Syllabus - objectifs': 'syll_objectifs',
+    'Syllabus - description': 'syll_description',
+    'Syllabus - ouverture mobilité entrante': 'syll_ouverture_mobilite_entrante',
+    'Syllabus - langue enseignement': 'syll_langue_enseignement',
+    'Syllabus - prérequis': 'syll_prerequis_pedagogiques',
+    'Syllabus - bibliographie': 'syll_bibliographie',
+    'Syllabus - contacts': 'syll_contacts',
+    'Syllabus - autres informations': 'syll_autres_infos',
+    'Syllabus - modalités enseignement': 'syll_modalites_enseignement',
+    'Syllabus - volume horaire': 'syll_volume_horaire',
+    'Syllabus - coefficient': 'syll_coefficient',
+    'Syllabus - modalités évaluation': 'syll_modalites_eval',
+    'SISE - type diplôme': 'sise_type_diplome',
+    'SISE - code diplôme': 'sise_code_diplome',
+    'SISE - niveau diplôme SISE': 'sise_niveau_diplome_sise',
+    'SISE - parcours-type': 'sise_parcours_type',
+    'SISE - domaine formation': 'sise_domaine_formation',
+    'SISE - mention': 'sise_mention',
+    'SISE - champ formation': 'sise_champ_formation',
+    'SISE - niveau diplôme': 'sise_niveau_diplome',
+    'SISE - déclinaison': 'sise_declinaison',
+    'Aglae - habilité bourses': 'aglae_habilite_bourses',
+    'Aglae - niveau': 'aglae_niveau',
+    'Formation porteuse': 'formation_porteuse',
+    'Structures porteuses': 'structures_porteuses'
 }
 
 #
@@ -102,11 +132,34 @@ noeud_defaults = {
     'est_distanciel': False,
     'est_stage': False,
     'capacite_accueil': None,
-    'est_pia': False,
-    'est_pia_actif': False,
-    'est_valide': False,
     'structure_principale': None,
-    'id_noeud': None
+    'id_noeud': None,
+    'type_formation': '0',
+    'syll_objectifs': None,
+    'syll_description': None,
+    'syll_ouverture_mobilite_entrante': None,
+    'syll_langue_enseignement': None,
+    'syll_prerequis_pedagogiques': None,
+    'syll_bibliographie': None,
+    'syll_contacts': None,
+    'syll_autres_infos': None,
+    'syll_modalites_enseignement': None,
+    'syll_volume_horaire': None,
+    'syll_coefficient': None,
+    'syll_modalites_eval': None,
+    'sise_type_diplome': None,
+    'sise_code_diplome': None,
+    'sise_niveau_diplome_sise': None,
+    'sise_parcours_type': None,
+    'sise_domaine_formation': None,
+    'sise_mention': None,
+    'sise_champ_formation': None,
+    'sise_niveau_diplome': None,
+    'sise_declinaison': None,
+    'aglae_habilite_bourses': False,
+    'aglae_niveau': None,
+    'formation_porteuse': None,
+    'structures_porteuses': None
 }
 
 #
@@ -126,11 +179,12 @@ def process_line(ligne, headers_courants):
 
     #
     # Utiliser en priorité les headers fournis dans la commande, si présents
+    #
     if headers_param:
         headers_courants = headers_param
     else:
         #
-        # Tester si la ligne courante est une ligne de headers - critère : la ligne contient toutes les données obligatoires
+        # Tester si la ligne courante est une ligne de headers - critère : la ligne contient les libellés des données obligatoires
         #
         if [True for d in donnees_csv_obligatoires if d in ligne] == [True] * len(donnees_csv_obligatoires):
             if msgs: print('Détection d\'une ligne de header', file=sys.stderr)
@@ -143,6 +197,7 @@ def process_line(ligne, headers_courants):
             for i, x in enumerate(ligne):
                 if donnees_csv.get(x): headers_courants[donnees_csv[x]] = i
 
+            if msgs: print('Colonnes détectées :', headers_courants)
             return
 
     if not headers_courants:
@@ -155,13 +210,14 @@ def process_line(ligne, headers_courants):
     valeurs_noeud = dict(noeud_defaults)
 
     #
-    # Mise à jour de la variable avec, outre les valeurs par défaut, les valeurs trouvées dans la ligne de données courante
+    # Mise à jour de la variable valeurs_noeud avec, outre les valeurs par défaut, les valeurs trouvées dans la ligne de données courante
     #
     for h in headers_courants:
         try:
-            if ligne[headers_courants[h]] != '': valeurs_noeud[h] = ligne[headers_courants[h]]
+            if ligne[headers_courants[h]] != '': valeurs_noeud[h] = str(ligne[headers_courants[h]])
         except:
-            if msgs: print('Pas de donnée', h, 'trouvée dans', ligne, file=sys.stderr)
+            # if msgs: print('Pas de donnée', h, 'trouvée dans', ligne, file=sys.stderr)
+            pass
 
         try:
             valeurs_noeud[h] = bool_equiv[valeurs_noeud[h].lower()]
@@ -192,6 +248,7 @@ def process_line(ligne, headers_courants):
 
     except ValueError as erreur:
         if msgs: print(erreur, file=sys.stderr)
+        if 'plages de choix incomplètes' in str(erreur): sys.exit(1)
 
 
 
@@ -209,24 +266,17 @@ class NoeudMaquette:
 
     def __init__(self, val):
         #
+        # Vérification de la présence des données obligatoires pour créer un noeud
+        #
+        for d in donnees_csv_obligatoires:
+            if not val.get(donnees_csv[d]): raise ValueError('Donnée obligatoire manquante : ' + d)
+
+        #
         # Ajustement des paramètres passés dans la variable 'val'
         #
         if not val['code'] or len(val['code']) > self.lg_max_code:
             # Erreur sur le code, on ne peut (et ne doit) rien faire
             raise ValueError('Erreur sur le code ' + str(val['code']))
-
-        if val['libelle'] and len(val['libelle']) > self.lg_max_libelle:
-            # Tronquer à la longueur max si le libellé est trop long
-            val['libelle'] = val['libelle'][:self.lg_max_libelle]
-
-            if msgs: print(val['code'], ': libellé trop long, tronqué à', self.lg_max_libelle, file=sys.stderr)
-
-        if val['libelle_long'] and len(val['libelle_long']) > self.lg_max_libelle_long:
-            # Tronquer à la longueur max si le libellé long dépasse la longueur autorisée
-            val['libelle_long'] = val['libelle_long'][:self.lg_max_libelle_long]
-
-            if msgs: print(val['code'], ': libellé long trop long, tronqué à', lg_max_libelle_long, file=sys.stderr)
-
 
         #
         # Les codes en majuscules
@@ -235,18 +285,49 @@ class NoeudMaquette:
         if val['code_parent']: val['code_parent'] = val['code_parent'].upper()
 
         #
-        # Traduire en type numérique une chaîne de chiffres
+        # Convertir en nombre à virgule les ects et en entiers les plages des groupements
         #
         try:
             val['ects'] = float(val['ects'])
         except:
             val['ects'] = None
 
+        try:
+            val['plage_max'] = int(val['plage_max'])
+        except:
+            val['plage_max'] = None
+
+        try:
+            val['plage_min'] = int(val['plage_min'])
+        except:
+            val['plage_min'] = None
+
+        #
+        # Libellé automatique si l'option -l est activée
+        #
+        if not val['libelle']:
+            val['libelle'] = 'Objet de type ' + val['type_noeud'] + ' et de code ' + val['code']
+
         #
         # Dupliquer le libellé si le libellé long est absent des données
         #
-        if val['libelle'] and not val['libelle_long']:
+        if not val['libelle_long']:
             val['libelle_long'] = val['libelle']
+
+        #
+        # Contrôle des longueurs de libellés
+        #
+        if len(val['libelle']) > self.lg_max_libelle:
+            # Tronquer à la longueur max si le libellé est trop long
+            val['libelle'] = val['libelle'][:self.lg_max_libelle]
+
+            if msgs: print(val['code'], ': libellé trop long, tronqué à', self.lg_max_libelle, file=sys.stderr)
+
+        if len(val['libelle_long']) > self.lg_max_libelle_long:
+            # Tronquer à la longueur max si le libellé long dépasse la longueur autorisée
+            val['libelle_long'] = val['libelle_long'][:self.lg_max_libelle_long]
+
+            if msgs: print(val['code'], ': libellé long trop long, tronqué à', self.lg_max_libelle_long, file=sys.stderr)
 
         #
         # Assignation d'un uuid aléatoire si aucun uuid n'est fourni en donnée
@@ -254,11 +335,6 @@ class NoeudMaquette:
         if not val['id_noeud']:
             val['id_noeud'] = str(uuid.uuid4()).lower()
 
-        #
-        # Vérification (superflue ?) de la présence des données obligatoires pour créer un noeud
-        #
-        for d in donnees_csv_obligatoires:
-            if not val.get(donnees_csv[d]): raise ValueError('La donnée ' + d + ' ne figure pas dans ' + str(val))
 
 
         if msgs: print('Traitement du noeud', val['code'], file=sys.stderr)
@@ -270,6 +346,7 @@ class NoeudMaquette:
             #
             # Création des membres communs de la classe NoeudMaquette
             #
+            self.type_noeud = val['type_noeud']
             self.id = val['id_noeud']
             self.code = val['code']
             self.mutualise = val['est_mutualise']
@@ -285,14 +362,14 @@ class NoeudMaquette:
                 'libelleLong': val['libelle_long']
             }
 
-            self.descripteursEnquete = {
-                'enqueteAglae': {
-                    'habilitePourBoursesAglae': False,
-                    'niveauAglae': None
-                }
-            }
+            #
+            # Création éventuelle de la liste des structures porteuses
+            #
+            val['structures_porteuses'] = val['structures_porteuses'].split(',') if val['structures_porteuses'] else []
 
             self.formatsEnseignement = {
+                'structuresPorteuse': val['structures_porteuses'],
+                # 'formationPorteuse': val['formation_porteuse'],
                 'formatsEnseignement': []
             }
 
@@ -305,7 +382,6 @@ class NoeudMaquette:
             # Ensemble des ascendants, nécessaire pour éviter les références circulaires
             #
             self.ascendants = set()
-
 
 
         #
@@ -377,18 +453,32 @@ class NoeudMaquette:
 
 class NoeudMaquetteEncoder(json.JSONEncoder):
     def default(self, o):
-        if isinstance(o, NoeudMaquette):
+        if isinstance(o, NoeudObjetFormation) or isinstance(o, NoeudFormation):
             return {
                 'id':           o.id,
                 'code':         o.code,
                 'mutualise':    o.mutualise,
                 'type':         o.type,
                 'contextes':    o.contextes,
-                'descripteursObjetMaquette':o.descripteursObjetMaquette,
-                'descripteursEnquete':      o.descripteursEnquete,
-                'formatsEnseignement':      o.formatsEnseignement,
-                'enfants':                  [{'obligatoire':True,'objetMaquette':e} for e in o.enfants]
+                'descripteursObjetMaquette':    o.descripteursObjetMaquette,
+                'descripteursSyllabus':         o.descripteursSyllabus,
+                'descripteursEnquete':          o.descripteursEnquete,
+                'formatsEnseignement':          o.formatsEnseignement,
+                'enfants':                      [{'obligatoire':True,'objetMaquette':e} for e in o.enfants]
             }
+        elif isinstance(o, NoeudMaquette):
+            return {
+                'id':           o.id,
+                'code':         o.code,
+                'mutualise':    o.mutualise,
+                'type':         o.type,
+                'contextes':    o.contextes,
+                'descripteursObjetMaquette':    o.descripteursObjetMaquette,
+                'descripteursEnquete':          o.descripteursEnquete,
+                'formatsEnseignement':          o.formatsEnseignement,
+                'enfants':                      [{'obligatoire':True,'objetMaquette':e} for e in o.enfants]
+            }
+
         return super().default(o)
 
 
@@ -402,7 +492,7 @@ class ContexteNoeud:
     ):
         self.id = str(uuid.uuid4()).lower()
         self.chemin = [] # fabriquer le chemin en suite de codes
-        self.valide = val['est_valide']
+        self.valide = False
 
         if val['type_noeud'] == 'FORMATION':
             self.type = 'FormationContexteEntity'
@@ -412,8 +502,8 @@ class ContexteNoeud:
             self.type = 'ObjetFormationContexteEntity'
 
         self.pointInscriptionAdministrative = {
-            'inscriptionAdministrative': val['est_pia'],
-            'actif': val['est_pia_actif']
+            'inscriptionAdministrative': False,
+            'actif': False
         }
 
 
@@ -424,16 +514,47 @@ class NoeudFormation(NoeudMaquette):
         except ValueError as erreur:
             raise ValueError(erreur)
 
-        self.mutualise = False
-        
         self.type = 'FormationEntity'
 
         self.descripteursObjetMaquette.update({
             'ects': val['ects'],
             'structurePrincipale': val['structure_principale'],
             'teleEnseignement': val['est_distanciel'],
-            'typeFormation': '0'
+            'typeFormation': val['type_formation']
         })
+
+        self.descripteursSyllabus = {
+            'objectif': val['syll_objectifs'],
+            'description':  val['syll_description'],
+            'ouvertureALaMobiliteEntrante': val['syll_ouverture_mobilite_entrante'],
+            'langueEnseignement':   val['syll_langue_enseignement'],
+            'prerequisPedagogique': val['syll_prerequis_pedagogiques'],
+            'bibliographie':    val['syll_bibliographie'],
+            'contacts': val['syll_contacts'],
+            'autresInformations':   val['syll_autres_infos'],
+            'modalitesEnseignements':   val['syll_modalites_enseignement'],
+            'volumeHoraireParTypeDeCours':  val['syll_volume_horaire'],
+            'coefficient':  val['syll_coefficient'],
+            'modalitesEvaluation':  val['syll_modalites_eval']
+        }
+
+        self.descripteursEnquete = {
+            'enqueteAglae': {
+                'habilitePourBoursesAglae': val['aglae_habilite_bourses'],
+                'niveauAglae': val['aglae_niveau']
+            },
+            'enqueteSise': {
+                'typeDiplome': val['sise_type_diplome'],
+                'codeDiplomeSise': val['sise_code_diplome'],
+                'niveauDiplomeSise': val['sise_niveau_diplome_sise'],
+                'parcoursTypeSise': val['sise_parcours_type'],
+                'domaineFormation': val['sise_domaine_formation'],
+                'mention': val['sise_mention'],
+                'champFormation': val['sise_champ_formation'],
+                'niveauDiplome': val['sise_niveau_diplome'],
+                'declinaisonDiplome': val['sise_declinaison']
+            }
+        }
 
         # Ajout du noeud nouvellement créé à l'ensemble des noeuds
         NoeudMaquette.noeuds[self.code] = self
@@ -458,6 +579,39 @@ class NoeudObjetFormation(NoeudMaquette):
             'capaciteAccueil': val['capacite_accueil']
         })
 
+        self.descripteursSyllabus = {
+            'objectif': val['syll_objectifs'],
+            'description':  val['syll_description'],
+            'ouvertureALaMobiliteEntrante': val['syll_ouverture_mobilite_entrante'],
+            'langueEnseignement':   val['syll_langue_enseignement'],
+            'prerequisPedagogique': val['syll_prerequis_pedagogiques'],
+            'bibliographie':    val['syll_bibliographie'],
+            'contacts': val['syll_contacts'],
+            'autresInformations':   val['syll_autres_infos'],
+            'modalitesEnseignements':   val['syll_modalites_enseignement'],
+            'volumeHoraireParTypeDeCours':  val['syll_volume_horaire'],
+            'coefficient':  val['syll_coefficient'],
+            'modalitesEvaluation':  val['syll_modalites_eval']
+        }
+
+        self.descripteursEnquete = {
+            'enqueteAglae': {
+                'habilitePourBoursesAglae': val['aglae_habilite_bourses'],
+                'niveauAglae': val['aglae_niveau']
+            },
+            'enqueteSise': {
+                'typeDiplome': val['sise_type_diplome'],
+                'codeDiplomeSise': val['sise_code_diplome'],
+                'niveauDiplomeSise': val['sise_niveau_diplome_sise'],
+                'parcoursTypeSise': val['sise_parcours_type'],
+                'domaineFormation': val['sise_domaine_formation'],
+                'mention': val['sise_mention'],
+                'champFormation': val['sise_champ_formation'],
+                'niveauDiplome': val['sise_niveau_diplome'],
+                'declinaisonDiplome': val['sise_declinaison']
+            }
+        }
+
         # Ajout du noeud nouvellement créé à l'ensemble des noeuds
         NoeudMaquette.noeuds[self.code] = self
 
@@ -479,6 +633,16 @@ class NoeudGroupement(NoeudMaquette):
                     'max': val['plage_max']
                 }
             })
+        else:
+            if verif_choix_groupements:
+                raise ValueError(val['code'] + ' : plages de choix incomplètes dans le groupement')
+
+        self.descripteursEnquete = {
+            'enqueteAglae': {
+                'habilitePourBoursesAglae': val['aglae_habilite_bourses'],
+                'niveauAglae': val['aglae_niveau']
+            }
+        }
 
         # Ajout du noeud nouvellement créé à l'ensemble des noeuds
         NoeudMaquette.noeuds[self.code] = self
@@ -496,7 +660,7 @@ def main():
     # Parser les arguments de la commande avec le module getopt
     #
     try:
-        opts, args = getopt.gnu_getopt(argv[1:], "an:bdh:")
+        opts, args = getopt.gnu_getopt(argv[1:], "an:bdh:lg")
     except:
         print(usage.format(commande).strip(), file=sys.stderr)
         sys.exit(1)
@@ -505,7 +669,7 @@ def main():
     #
     # Paramètres généraux de la commande
     #
-    global b64, msgs, noeuds_demandes, headers_param
+    global b64, msgs, noeuds_demandes, headers_param, verif_choix_groupements, donnees_csv_obligatoires
 
 
     #
@@ -520,6 +684,12 @@ def main():
 
         elif opt == '-d':
             msgs = True
+
+        elif opt == '-l':
+            donnees_csv_obligatoires = ['Type objet', 'Code objet']
+
+        elif opt == '-g':
+            verif_choix_groupements = True
 
         elif opt == '-h':
             param_h = []
@@ -561,7 +731,8 @@ def main():
         if msgs: print('Lecture des données sur l\'entrée standard', file=sys.stderr)
 
         for ligne in sys.stdin:
-            process_line(ligne.strip().split('\t'), headers_courants)
+            ligne = [l.strip() for l in ligne.split('\t')]
+            process_line(ligne, headers_courants)
 
     else:
         #
@@ -607,7 +778,8 @@ def main():
                     # Lecture ligne à ligne d'un fichier texte ou csv
                     #
                     for ligne in fichier:
-                        process_line(ligne.strip().split('\t'), headers_courants)
+                        ligne = [l.strip() for l in ligne.split('\t')]                        
+                        process_line(ligne, headers_courants)
 
                     fichier.close()
 
@@ -664,6 +836,12 @@ def main():
                             lignes = iter(workbook.get_sheet_by_name(onglet).to_python())
 
                             for ligne in lignes:
+                                # Stripper les chaînes de caractères
+                                ligne = list(map(lambda l: l.strip() if isinstance(l, str) else l, ligne))
+
+                                # Convertir en chaîne de caractères les nombres (important si la ligne a été produite par calamine_python)
+                                ligne = list(map(lambda x: str(int(x)) if isinstance(x, float) and x.is_integer() else str(x), ligne))
+
                                 process_line(ligne, headers_courants)
 
                             #
@@ -687,7 +865,24 @@ def main():
     # Si pas d'option -n, affichage de tous les noeuds racines rencontrés dans les fichiers ou sur l'entrée standard
     #
     if noeuds_demandes:
-        noeuds_demandes = [n for n in noeuds_demandes if n in NoeudMaquette.noeuds]
+        if len(noeuds_demandes)>1 or ':' not in noeuds_demandes[0]:
+            noeuds_demandes = [n for n in noeuds_demandes if n in NoeudMaquette.noeuds]
+        else:
+            noeuds_demandes = noeuds_demandes[0].split(':')
+            type_fonction = noeuds_demandes[0]
+            fonc_demandes = noeuds_demandes[1:]
+
+            if type_fonction == 'F': # F comme filtre
+                if fonc_demandes[0] != '':
+                    noeuds_demandes = [NoeudMaquette.noeuds[n].code for n in NoeudMaquette.noeuds if NoeudMaquette.noeuds[n].type_noeud in fonc_demandes]
+            elif type_fonction == 'B': # B comme branche
+                noeuds_demandes = []
+                for branche in fonc_demandes:
+                    if NoeudMaquette.noeuds.get(branche):
+                        noeuds_demandes += branche
+                        noeuds_demandes += [NoeudMaquette.noeuds[n].code for n in NoeudMaquette.noeuds if NoeudMaquette.noeuds[branche] in NoeudMaquette.noeuds[n].ascendants]
+            else:
+                noeuds_demandes = []
     else:
         #
         # Les racines sont des noeuds avec un ensemble d'ascendants vide, ie de cardinal zéro
