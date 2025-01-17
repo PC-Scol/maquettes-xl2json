@@ -12,11 +12,10 @@ Usage       maquettes-xl2json.py [-n code,code,...] [-b] [-d] [fichier_excel[:i:
   -a        affiche une aide de type 'usage' consistant en les présentes lignes
   -n        liste des codes à renvoyer au format JSON, séparés par une virgule - si non présent, renvoie toutes les racines trouvées
   -b        renvoie les maquettes encodées en base64
-  -l        si présente, la présence des libellés n'est plus obligatoire (un libellé type sera généré automatiquement)
+  -l        présence non obligatoire des libellés (un libellé type sera généré automatiquement)
   -d        affiche des messages d'info pour suivre le déroulé de l'execution de la commande
-  -g        si présente, la construction de maquette échoue dès lors qu'un groupement est spécifié sans plage de choix
-  -h        pour les cas désespérés : transmet les indices de colonnes (séparés par virgule) où se trouvent les données
-            type d'objet, nature, code, libellé, libellé long, ects, code du noeud parent, plage min de groupement, plage max
+  -g        la construction de maquette échoue dès lors qu'un groupement est spécifié sans plage de choix
+  -c        affiche seulement les codes, sans construire d'objet json
 
 Auteur
 Alfredo Pereira - 09/24
@@ -31,11 +30,10 @@ Usage       {} [-n code,code,...] [-b] [-d] [fichier_excel[:i:j:k:...]] [fichier
   -a        affiche une aide de type 'usage' consistant en les présentes lignes
   -n        liste des codes à renvoyer au format JSON, séparés par une virgule - si non présent, renvoie toutes les racines trouvées
   -b        renvoie les maquettes encodées en base64
-  -l        si présente, la présence des libellés n'est plus obligatoire (un libellé type sera généré automatiquement)
+  -l        présence non obligatoire des libellés (un libellé type sera généré automatiquement)
   -d        affiche des messages d'info pour suivre le déroulé de l'execution de la commande
-  -g        si présente, la construction de maquette échoue dès lors qu'un groupement est spécifié sans plage de choix
-  -h        pour les cas désespérés : transmet les indices de colonnes (séparés par virgule) où se trouvent les données
-            type d'objet, nature, code, libellé, libellé long, ects, code du noeud parent, plage min de groupement, plage max
+  -g        la construction de maquette échoue dès lors qu'un groupement est spécifié sans plage de choix
+  -c        affiche seulement les codes, sans construire d'objet json
 """
 
 import sys
@@ -59,6 +57,7 @@ b64 = False             # correspond à l'option -b
 msgs = False            # correspond à l'option -d
 noeuds_demandes = []    # correspond à l'option -n
 headers_param = dict()  # correspond à l'option -h
+codes_seuls = False     # correspond à l'option -c
 verif_choix_groupements = False        # option -g
 
 #
@@ -75,6 +74,7 @@ donnees_csv = {
     'Plage MAX': 'plage_max',
     'Code parent': 'code_parent',
     'Obligatoire': 'obligatoire_parent',
+    'PIA': 'est_pia',
     'Mutualisé': 'est_mutualise',
     'Distanciel': 'est_distanciel',
     'Stage': 'est_stage',
@@ -128,6 +128,7 @@ noeud_defaults = {
     'plage_max': None,
     'code_parent': None,
     'obligatoire_parent': True,
+    'est_pia': False,
     'est_mutualise': False,
     'est_distanciel': False,
     'est_stage': False,
@@ -174,84 +175,6 @@ bool_equiv = {
 }
 
 
-def process_line(ligne, headers_courants):
-    """Traiter une ligne de fichier spécifiant les données d'un noeud de maquette en tant que liste"""
-
-    #
-    # Utiliser en priorité les headers fournis dans la commande, si présents
-    #
-    if headers_param:
-        headers_courants = headers_param
-    else:
-        #
-        # Tester si la ligne courante est une ligne de headers - critère : la ligne contient les libellés des données obligatoires
-        #
-        if [True for d in donnees_csv_obligatoires if d in ligne] == [True] * len(donnees_csv_obligatoires):
-            if msgs: print('Détection d\'une ligne de header', file=sys.stderr)
-
-            headers_courants.clear()
-
-            #
-            # Construction de l'index des données se trouvant dans le fichier source
-            #
-            for i, x in enumerate(ligne):
-                if donnees_csv.get(x): headers_courants[donnees_csv[x]] = i
-
-            if msgs: print('Colonnes détectées :', headers_courants)
-            return
-
-    if not headers_courants:
-        if msgs: print(ligne, ': ligne ignorée car aucun header n\'a été défini dans cette passe', file=sys.stderr)
-        return
-
-    #
-    # Chargement des valeurs par défaut d'un objet NoeudMaquette
-    #
-    valeurs_noeud = dict(noeud_defaults)
-
-    #
-    # Mise à jour de la variable valeurs_noeud avec, outre les valeurs par défaut, les valeurs trouvées dans la ligne de données courante
-    #
-    for h in headers_courants:
-        try:
-            if ligne[headers_courants[h]] != '': valeurs_noeud[h] = str(ligne[headers_courants[h]])
-        except:
-            # if msgs: print('Pas de donnée', h, 'trouvée dans', ligne, file=sys.stderr)
-            pass
-
-        try:
-            valeurs_noeud[h] = bool_equiv[valeurs_noeud[h].lower()]
-        except:
-            pass
-
-    #
-    # Cette portion de code (contrôle de cohérence) serait mieux située dans l'initialisation d'un objet NoeudMaquette --> Plus tard
-    #
-    type_noeud = valeurs_noeud.get('type_noeud')
-
-    if type_noeud:
-        type_noeud = type_noeud.upper()
-    else:
-        if msgs: print(ligne, ': ligne ignorée car pas de type d\'objet de formation indiqué', file=sys.stderr)
-        return
-
-    #
-    # Création, en fonction du type d'objet de formation indiqué, d'une instance de la classe correcte
-    #
-    try:
-        if type_noeud == 'FORMATION':
-            noeud = NoeudFormation(valeurs_noeud)
-        elif type_noeud == 'GROUPEMENT':
-            noeud = NoeudGroupement(valeurs_noeud)
-        else:
-            noeud = NoeudObjetFormation(valeurs_noeud)
-
-    except ValueError as erreur:
-        if msgs: print(erreur, file=sys.stderr)
-        if 'plages de choix incomplètes' in str(erreur): sys.exit(1)
-
-
-
 class NoeudMaquette:
     #
     # Longueurs maximales de champs critiques
@@ -262,7 +185,6 @@ class NoeudMaquette:
     # Dictionnaire des noeuds créés jusqu'ici, indexés par leur code
     #
     noeuds = dict()
-
 
     def __init__(self, val):
         #
@@ -277,6 +199,9 @@ class NoeudMaquette:
         if not val['code'] or len(val['code']) > self.lg_max_code:
             # Erreur sur le code, on ne peut (et ne doit) rien faire
             raise ValueError('Erreur sur le code ' + str(val['code']))
+
+
+        if msgs: print('Traitement du noeud', val['code'], file=sys.stderr)
 
         #
         # Les codes en majuscules
@@ -336,8 +261,24 @@ class NoeudMaquette:
             val['id_noeud'] = str(uuid.uuid4()).lower()
 
 
+        #
+        # Exclusions de cas où la donnée fournie n'est pas cohérente
+        #
 
-        if msgs: print('Traitement du noeud', val['code'], file=sys.stderr)
+        # Le code parent indiqué n'existe pas
+        if val['code_parent'] and val['code_parent'] not in NoeudMaquette.noeuds:
+            raise ValueError('Problème avec ' + str(val['code']) + ', le code parent indiqué n\'a pas été trouvé : ' + str(val['code_parent']))
+
+
+        # Le code existe déjà mais pas de code parent fourni --> rien à faire (pas d'update de noeuds)
+        if val['code'] in NoeudMaquette.noeuds and not val['code_parent']:
+            raise ValueError('Noeud déjà traité, sans indication de nouveau parent : ' + str(val['code']))
+
+
+        # Le code indiqué est déjà enfant du code parent fourni --> rien à faire (pas d'update de noeud)
+        if val['code_parent'] in NoeudMaquette.noeuds and val['code'] in NoeudMaquette.noeuds[val['code_parent']].enfants:
+            raise ValueError(str(val['code']) + ' est déjà enfant de ' + str(val['code_parent']))
+
 
         #
         # Le code fourni en donnée n'est pas encore apparu --> Création d'un nouveau noeud
@@ -352,11 +293,6 @@ class NoeudMaquette:
             self.mutualise = val['est_mutualise']
             self.type = None
 
-            #
-            # Les contextes : fonctionnalité à ajouter dans une future version
-            #
-            self.contextes = []
-
             self.descripteursObjetMaquette = {
                 'libelle': val['libelle'],
                 'libelleLong': val['libelle_long']
@@ -368,7 +304,7 @@ class NoeudMaquette:
             val['structures_porteuses'] = val['structures_porteuses'].split(',') if val['structures_porteuses'] else []
 
             self.formatsEnseignement = {
-                'structuresPorteuse': val['structures_porteuses'],
+                # 'structuresPorteuse': val['structures_porteuses'],
                 # 'formationPorteuse': val['formation_porteuse'],
                 'formatsEnseignement': []
             }
@@ -383,37 +319,21 @@ class NoeudMaquette:
             #
             self.ascendants = set()
 
-
-        #
-        # Exclusions de cas où la donnée fournie n'est pas cohérente
-        #
-
-        # Le code parent indiqué n'existe pas
-        if val['code_parent'] and val['code_parent'] not in NoeudMaquette.noeuds:
-            raise ValueError('Problème avec ' + str(val['code']) + ', le code parent indiqué n\'existe pas : ' + str(val['code_parent']))
-
-
-        # Le code existe déjà mais pas de code parent fourni --> rien à faire (pas d'update de noeuds)
-        if val['code'] in NoeudMaquette.noeuds and not val['code_parent']:
-            raise ValueError('Noeud déjà traité, sans indication de nouveau parent : ' + str(val['code']))
-
-
-        # Le code indiqué est déjà enfant du code parent fourni --> rien à faire (pas d'update de noeud)
-        if val['code_parent'] in NoeudMaquette.noeuds and val['code'] in NoeudMaquette.noeuds[val['code_parent']].enfants:
-            raise ValueError(str(val['code']) + ' est déjà enfant de ' + str(val['code_parent']))
-
+            #
+            # Initialisation de la propriété contextes de l'objet maquette
+            #
+            self.contextes = []
 
 
         #
-        # Pas d'anomalie de valeurs détectée, on peut créer un lien de parenté entre les 2 noeuds fournis (code et code_parent)
+        # Création d'un lien de parenté si code_parent a déjà été rencontré et traité
         #
-
-        if val['code_parent'] in NoeudMaquette.noeuds:
+        if val['code_parent'] and val['code_parent'] in NoeudMaquette.noeuds:
 
             # Le noeud créé a un code déjà rencontré
             if val['code'] in NoeudMaquette.noeuds:
                 try:
-                    NoeudMaquette.creer_enfant(NoeudMaquette.noeuds[val['code_parent']], NoeudMaquette.noeuds[val['code']])
+                    NoeudMaquette.creer_enfant(NoeudMaquette.noeuds[val['code_parent']], NoeudMaquette.noeuds[val['code']], val)
                 except ValueError as erreur:
                     raise ValueError(erreur)
 
@@ -423,20 +343,56 @@ class NoeudMaquette:
             # Le noeud créé est un nouveau noeud
             else:
                 try:
-                    NoeudMaquette.creer_enfant(NoeudMaquette.noeuds[val['code_parent']], self)
+                    NoeudMaquette.creer_enfant(NoeudMaquette.noeuds[val['code_parent']], self, val)
                 except ValueError as erreur:
                     raise ValueError(erreur)
+
+        else:
+            # Pas de code parent spécifié, création du contexte minimal (ie réduit à l'id du noeud lui-même)
+            self.contextes = [ContexteNoeud(val, self.code, [self.id])]
 
 
 
     def __str__(self):
         #
+        # Définition de l'affichage json d'un objet de la classe NoeudMaquette
+        #
+        class NoeudMaquetteEncoder(json.JSONEncoder):
+            def default(self, o):
+                if isinstance(o, NoeudObjetFormation) or isinstance(o, NoeudFormation):
+                    return {
+                        'id':           o.id,
+                        'code':         o.code,
+                        'mutualise':    o.mutualise,
+                        'type':         o.type,
+                        'contextes':    [c.__dict__ for c in o.contextes],
+                        'descripteursObjetMaquette':    o.descripteursObjetMaquette,
+                        'descripteursSyllabus':         o.descripteursSyllabus,
+                        'descripteursEnquete':          o.descripteursEnquete,
+                        'formatsEnseignement':          o.formatsEnseignement,
+                        'enfants':                      [{'obligatoire':True,'objetMaquette':e} for e in o.enfants]
+                    }
+                elif isinstance(o, NoeudMaquette):
+                    return {
+                        'id':           o.id,
+                        'code':         o.code,
+                        'mutualise':    o.mutualise,
+                        'type':         o.type,
+                        'contextes':    [c.__dict__ for c in o.contextes],
+                        'descripteursObjetMaquette':    o.descripteursObjetMaquette,
+                        'descripteursEnquete':          o.descripteursEnquete,
+                        'formatsEnseignement':          o.formatsEnseignement,
+                        'enfants':                      [{'obligatoire':True,'objetMaquette':e} for e in o.enfants]
+                    }
+
+                return super().default(o)
+
+        #
         # Sérialisation avec json.dumps du dictionnaire représentant une instance d'objet NoeudMaquette
         #
         return  json.dumps(self, cls=NoeudMaquetteEncoder, separators=(',', ':'))
 
-
-    def creer_enfant(parent, enfant):
+    def creer_enfant(parent, enfant, val):
         #
         # Création d'un lien parent-enfant entre deux noeuds
         #
@@ -448,63 +404,84 @@ class NoeudMaquette:
         parent.enfants.add(enfant)
         enfant.ascendants.add(parent)
         enfant.ascendants |= parent.ascendants
+        enfant.contextes += [ContexteNoeud(val, enfant.code, c.chemin + [enfant.id]) for c in parent.contextes]
 
 
-
-class NoeudMaquetteEncoder(json.JSONEncoder):
-    def default(self, o):
-        if isinstance(o, NoeudObjetFormation) or isinstance(o, NoeudFormation):
-            return {
-                'id':           o.id,
-                'code':         o.code,
-                'mutualise':    o.mutualise,
-                'type':         o.type,
-                'contextes':    o.contextes,
-                'descripteursObjetMaquette':    o.descripteursObjetMaquette,
-                'descripteursSyllabus':         o.descripteursSyllabus,
-                'descripteursEnquete':          o.descripteursEnquete,
-                'formatsEnseignement':          o.formatsEnseignement,
-                'enfants':                      [{'obligatoire':True,'objetMaquette':e} for e in o.enfants]
-            }
-        elif isinstance(o, NoeudMaquette):
-            return {
-                'id':           o.id,
-                'code':         o.code,
-                'mutualise':    o.mutualise,
-                'type':         o.type,
-                'contextes':    o.contextes,
-                'descripteursObjetMaquette':    o.descripteursObjetMaquette,
-                'descripteursEnquete':          o.descripteursEnquete,
-                'formatsEnseignement':          o.formatsEnseignement,
-                'enfants':                      [{'obligatoire':True,'objetMaquette':e} for e in o.enfants]
-            }
-
-        return super().default(o)
-
-
-#
-# Classe non utilisée pour le moment, elle servira à définir les contextes de noeuds
-#
 class ContexteNoeud:
-    def __init__(
-        self,
-        val
-    ):
+    def __init__(self, val, code, chemin):
         self.id = str(uuid.uuid4()).lower()
-        self.chemin = [] # fabriquer le chemin en suite de codes
+        self.chemin = chemin
         self.valide = False
 
         if val['type_noeud'] == 'FORMATION':
             self.type = 'FormationContexteEntity'
+
         elif val['type_noeud'] == 'GROUPEMENT':
             self.type = 'GroupementContexteEntity'
+
+            # Accepter les valeurs d'un contexte, si le noeud est déjà connu et si la valeur fournie est différente de la valeur par défaut
+            if code in NoeudMaquette.noeuds:
+                self.descripteursGroupementContexte = dict()
+                plage_de_choix = {'min': val['plage_min'], 'max': val['plage_max']}
+                plage_de_choix_vide = {'min': None, 'max': None}
+
+                self.descripteursGroupementContexte['plageDeChoix'] = plage_de_choix.copy() if NoeudMaquette.noeuds[code].descripteursObjetMaquette['plageDeChoix'] != plage_de_choix else plage_de_choix_vide.copy()
+                self.descripteursGroupementContexte['natureGroupement'] = val['nature'] if NoeudMaquette.noeuds[code].descripteursObjetMaquette['nature'] != val['nature'] else None
+
+                # Simplifier l'objet maquette si pas de changement par rapport aux valeurs par défaut
+                if (not self.descripteursGroupementContexte['natureGroupement']) and (self.descripteursGroupementContexte['plageDeChoix'] == plage_de_choix_vide):
+                    del self.descripteursGroupementContexte
+
         else:
             self.type = 'ObjetFormationContexteEntity'
 
+            # Accepter les valeurs d'un contexte, si le noeud est déjà connu et si la valeur fournie est différente de la valeur par défaut
+            if code in NoeudMaquette.noeuds:
+                self.descripteursObjetFormationContexte = dict()
+
+                self.descripteursObjetFormationContexte['ects'] = val['ects'] if val['ects'] != NoeudMaquette.noeuds[code].descripteursObjetMaquette['ects'] else None
+                self.descripteursObjetFormationContexte['nature'] = val['nature'] if val['nature'] != NoeudMaquette.noeuds[code].descripteursObjetMaquette['nature'] else None
+
+                # Simplifier l'objet maquette si pas de changement par rapport aux valeurs par défaut
+                if (not self.descripteursObjetFormationContexte['ects']) and (not self.descripteursObjetFormationContexte['nature']):
+                    del self.descripteursObjetFormationContexte
+
         self.pointInscriptionAdministrative = {
-            'inscriptionAdministrative': False,
-            'actif': False
+            'inscriptionAdministrative': val['est_pia'],
+            'actif': val['est_pia']
         }
+
+
+class NoeudGroupement(NoeudMaquette):
+    def __init__(self, val):
+        try:
+            super().__init__(val)
+        except ValueError as erreur:
+            raise ValueError(erreur)
+
+        self.type = 'GroupementEntity'
+
+        if val['plage_min'] and val['plage_max']:
+            self.descripteursObjetMaquette.update({
+                'nature': val['nature'],
+                'plageDeChoix': {
+                    'min': val['plage_min'],
+                    'max': val['plage_max']
+                }
+            })
+        else:
+            if verif_choix_groupements and val['code'] not in NoeudMaquette.noeuds:
+                raise ValueError(val['code'] + ' : plages de choix incomplètes dans le groupement')
+
+        self.descripteursEnquete = {
+            'enqueteAglae': {
+                'habilitePourBoursesAglae': val['aglae_habilite_bourses'],
+                'niveauAglae': val['aglae_niveau']
+            }
+        }
+
+        # Ajout du noeud nouvellement créé à l'ensemble des noeuds
+        NoeudMaquette.noeuds[self.code] = self
 
 
 class NoeudFormation(NoeudMaquette):
@@ -616,36 +593,83 @@ class NoeudObjetFormation(NoeudMaquette):
         NoeudMaquette.noeuds[self.code] = self
 
 
-class NoeudGroupement(NoeudMaquette):
-    def __init__(self, val):
+
+def process_line(ligne, headers_courants):
+    """Traiter une ligne de fichier spécifiant les données d'un noeud de maquette en tant que liste"""
+
+    #
+    # Utiliser en priorité les headers fournis dans la commande, si présents
+    #
+    if headers_param:
+        headers_courants = headers_param
+    else:
+        #
+        # Tester si la ligne courante est une ligne de headers - critère : la ligne contient les libellés des données obligatoires
+        #
+        if [True for d in donnees_csv_obligatoires if d in ligne] == [True] * len(donnees_csv_obligatoires):
+            if msgs: print('Détection d\'une ligne de header', file=sys.stderr)
+
+            headers_courants.clear()
+
+            #
+            # Construction de l'index des données se trouvant dans le fichier source
+            #
+            for i, x in enumerate(ligne):
+                if donnees_csv.get(x): headers_courants[donnees_csv[x]] = i
+
+            if msgs: print('Colonnes détectées :', headers_courants)
+            return
+
+    if not headers_courants:
+        if msgs: print(ligne, ': ligne ignorée car aucun header n\'a été défini dans cette passe', file=sys.stderr)
+        return
+
+    #
+    # Chargement des valeurs par défaut d'un objet NoeudMaquette
+    #
+    valeurs_noeud = dict(noeud_defaults)
+
+    #
+    # Mise à jour de la variable valeurs_noeud avec, outre les valeurs par défaut, les valeurs trouvées dans la ligne de données courante
+    #
+    for h in headers_courants:
         try:
-            super().__init__(val)
-        except ValueError as erreur:
-            raise ValueError(erreur)
+            if ligne[headers_courants[h]] != '': valeurs_noeud[h] = str(ligne[headers_courants[h]])
+        except:
+            # if msgs: print('Pas de donnée', h, 'trouvée dans', ligne, file=sys.stderr)
+            pass
 
-        self.type = 'GroupementEntity'
+        try:
+            valeurs_noeud[h] = bool_equiv[valeurs_noeud[h].lower()]
+        except:
+            pass
 
-        if val['plage_min'] and val['plage_max']:
-            self.descripteursObjetMaquette.update({
-                'nature': val['nature'],
-                'plageDeChoix': {
-                    'min': val['plage_min'],
-                    'max': val['plage_max']
-                }
-            })
+    #
+    # Cette portion de code (contrôle de cohérence) serait mieux située dans l'initialisation d'un objet NoeudMaquette --> Plus tard
+    #
+    type_noeud = valeurs_noeud.get('type_noeud')
+
+    if type_noeud:
+        type_noeud = type_noeud.upper()
+    else:
+        if msgs: print(ligne, ': ligne ignorée car pas de type d\'objet de formation indiqué', file=sys.stderr)
+        return
+
+    #
+    # Création, en fonction du type d'objet de formation indiqué, d'une instance de la classe correcte
+    #
+    try:
+        if type_noeud == 'FORMATION':
+            noeud = NoeudFormation(valeurs_noeud)
+        elif type_noeud == 'GROUPEMENT':
+            noeud = NoeudGroupement(valeurs_noeud)
         else:
-            if verif_choix_groupements:
-                raise ValueError(val['code'] + ' : plages de choix incomplètes dans le groupement')
+            noeud = NoeudObjetFormation(valeurs_noeud)
 
-        self.descripteursEnquete = {
-            'enqueteAglae': {
-                'habilitePourBoursesAglae': val['aglae_habilite_bourses'],
-                'niveauAglae': val['aglae_niveau']
-            }
-        }
+    except ValueError as erreur:
+        if msgs: print(erreur, file=sys.stderr)
+        if 'plages de choix incomplètes' in str(erreur): sys.exit(1)
 
-        # Ajout du noeud nouvellement créé à l'ensemble des noeuds
-        NoeudMaquette.noeuds[self.code] = self
 
 
 def main():
@@ -660,7 +684,7 @@ def main():
     # Parser les arguments de la commande avec le module getopt
     #
     try:
-        opts, args = getopt.gnu_getopt(argv[1:], "an:bdh:lg")
+        opts, args = getopt.gnu_getopt(argv[1:], "an:bdh:lgc")
     except:
         print(usage.format(commande).strip(), file=sys.stderr)
         sys.exit(1)
@@ -669,7 +693,7 @@ def main():
     #
     # Paramètres généraux de la commande
     #
-    global b64, msgs, noeuds_demandes, headers_param, verif_choix_groupements, donnees_csv_obligatoires
+    global b64, msgs, noeuds_demandes, headers_param, verif_choix_groupements, codes_seuls, donnees_csv_obligatoires
 
 
     #
@@ -690,6 +714,9 @@ def main():
 
         elif opt == '-g':
             verif_choix_groupements = True
+
+        elif opt == '-c':
+            codes_seuls = True
 
         elif opt == '-h':
             param_h = []
@@ -875,6 +902,8 @@ def main():
             if type_fonction == 'F': # F comme filtre
                 if fonc_demandes[0] != '':
                     noeuds_demandes = [NoeudMaquette.noeuds[n].code for n in NoeudMaquette.noeuds if NoeudMaquette.noeuds[n].type_noeud in fonc_demandes]
+                else:
+                    noeuds_demandes = [NoeudMaquette.noeuds[n].code for n in NoeudMaquette.noeuds]
             elif type_fonction == 'B': # B comme branche
                 noeuds_demandes = []
                 for branche in fonc_demandes:
@@ -901,6 +930,8 @@ def main():
             dataz = base64.b64encode(dataz).decode()
             print(dataz)
 
+        elif codes_seuls:
+            print(NoeudMaquette.noeuds[n].code)
         else:
             print(NoeudMaquette.noeuds[n])
 
