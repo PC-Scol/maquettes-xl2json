@@ -105,8 +105,13 @@ donnees_csv = {
     'SISE - déclinaison': 'sise_declinaison',
     'Aglae - habilité bourses': 'aglae_habilite_bourses',
     'Aglae - niveau': 'aglae_niveau',
-    'Formation porteuse': 'formation_porteuse',
-    'Structures porteuses': 'structures_porteuses'
+    # 'Formation porteuse': 'formation_porteuse',
+    'Structures porteuses': 'structures_porteuses',
+    'Formats - modalités': 'formats_modalites',
+    'Formats - type heures': 'formats_type_heures',
+    'Formats - volume horaire': 'formats_heures',
+    'Formats - nombre groupes': 'formats_groupes',
+    'Formats - seuil dédoublement': 'formats_dedoublement'
 }
 
 #
@@ -159,8 +164,13 @@ noeud_defaults = {
     'sise_declinaison': None,
     'aglae_habilite_bourses': False,
     'aglae_niveau': None,
-    'formation_porteuse': None,
-    'structures_porteuses': None
+    # 'formation_porteuse': None,
+    'structures_porteuses': None,
+    'formats_modalites': None,
+    'formats_type_heures': None,
+    'formats_heures': None,
+    'formats_groupes': None,
+    'formats_dedoublement': None
 }
 
 #
@@ -207,10 +217,21 @@ class NoeudMaquette:
         # Les codes en majuscules
         #
         val['code'] = val['code'].upper()
-        if val['code_parent']: val['code_parent'] = val['code_parent'].upper()
+ 
+        try: val['code_parent'] = val['code_parent'].upper()
+        except: pass
+
+        try: val['formats_type_heures'] = val['formats_type_heures'].upper()
+        except: pass
+
+        try: val['formats_modalites'] = val['formats_modalites'].upper()
+        except: pass
+
+        try: val['structures_porteuses'] = val['structures_porteuses'].upper()
+        except: pass
 
         #
-        # Convertir en nombre à virgule les ects et en entiers les plages des groupements
+        # Convertir en nombres les nombres
         #
         try:
             val['ects'] = float(val['ects'])
@@ -299,13 +320,9 @@ class NoeudMaquette:
             }
 
             #
-            # Création éventuelle de la liste des structures porteuses
+            # Bloc Format des enseignements, obligatoire dans tous les objets maquettes, composé plus tard de 2 sous-blocs : Structures porteuses ET Format des enseignements
             #
-            val['structures_porteuses'] = val['structures_porteuses'].split(',') if val['structures_porteuses'] else []
-
             self.formatsEnseignement = {
-                # 'structuresPorteuse': val['structures_porteuses'],
-                # 'formationPorteuse': val['formation_porteuse'],
                 'formatsEnseignement': []
             }
 
@@ -405,6 +422,29 @@ class NoeudMaquette:
         enfant.ascendants.add(parent)
         enfant.ascendants |= parent.ascendants
         enfant.contextes += [ContexteNoeud(val, enfant.code, c.chemin + [enfant.id]) for c in parent.contextes]
+
+
+class FormatEnseignement:
+    def __init__(self, valf):
+        self.id = str(uuid.uuid4()).lower()
+        self.version = 0
+        self.modalite = valf['formats_modalites']
+        self.typeHeure = valf['formats_type_heures']
+
+        self.volumeHoraire = 0
+        for s in ['h', 'H', ':']:
+            if s in valf['formats_heures']:
+                valf['formats_heures'] = valf['formats_heures'].split(s)
+
+                try: self.volumeHoraire = int(valf['formats_heures'][0]) * 3600 + int(valf['formats_heures'][1]) * 60
+                except: pass
+                break
+
+        try: self.nombreTheoriqueDeGroupes = int(valf['formats_groupes'])
+        except: self.nombreTheoriqueDeGroupes = 1
+
+        try: self.seuilDedoublement = int(valf['formats_dedoublement'])
+        except: self.seuilDedoublement = None
 
 
 class ContexteNoeud:
@@ -533,7 +573,30 @@ class NoeudFormation(NoeudMaquette):
             }
         }
 
+        #
+        # Construire la liste des structures porteuses et l'insérer dans l'objet maquette (sous la partie 'formatsEnseignement')
+        #
+        if val['structures_porteuses']:
+            self.formatsEnseignement['structuresPorteuse'] = val['structures_porteuses'].split(',')
+
+        #
+        # Construire la liste des formats d'enseignement et les insérer dans l'objet maquette (sous la partie 'formatsEnseignement')
+        #
+        if val['formats_modalites']:
+            # Détecter si plusieurs formats d'enseignement sont spécifiés
+
+            val_formats = dict()
+            for k in ['formats_modalites', 'formats_type_heures', 'formats_heures', 'formats_groupes', 'formats_dedoublement']:
+                val_formats[k] = val[k].split(',') if val[k] else []
+
+            nombre_formats = max(len(v) for v in val_formats.values())
+
+            for n in range(nombre_formats):
+                self.formatsEnseignement['formatsEnseignement'] += [FormatEnseignement( {k:(v[n:n-len(v)+1][0] if n-len(v)+1<0 else v[-1] if v else '') for k,v in val_formats.items()} ).__dict__]
+
+        #
         # Ajout du noeud nouvellement créé à l'ensemble des noeuds
+        #
         NoeudMaquette.noeuds[self.code] = self
 
 
@@ -589,7 +652,30 @@ class NoeudObjetFormation(NoeudMaquette):
             }
         }
 
+        #
+        # Construire la liste des structures porteuses et l'insérer dans l'objet maquette (sous la partie 'formatsEnseignement')
+        #
+        if val['structures_porteuses']:
+            self.formatsEnseignement['structuresPorteuse'] = val['structures_porteuses'].split(',')
+
+        #
+        # Construire la liste des formats d'enseignement et les insérer dans l'objet maquette (sous la partie 'formatsEnseignement')
+        #
+        if val['formats_modalites']:
+            # Détecter si plusieurs formats d'enseignement sont spécifiés
+
+            val_formats = dict()
+            for k in ['formats_modalites', 'formats_type_heures', 'formats_heures', 'formats_groupes', 'formats_dedoublement']:
+                val_formats[k] = val[k].split(',') if val[k] else []
+
+            nombre_formats = max(len(v) for v in val_formats.values())
+
+            for n in range(nombre_formats):
+                self.formatsEnseignement['formatsEnseignement'] += [FormatEnseignement( {k:(v[n:n-len(v)+1][0] if n-len(v)+1<0 else v[-1] if v else '') for k,v in val_formats.items()} ).__dict__]
+
+        #
         # Ajout du noeud nouvellement créé à l'ensemble des noeuds
+        #
         NoeudMaquette.noeuds[self.code] = self
 
 
@@ -908,7 +994,7 @@ def main():
                 noeuds_demandes = []
                 for branche in fonc_demandes:
                     if NoeudMaquette.noeuds.get(branche):
-                        noeuds_demandes += branche
+                        noeuds_demandes += [branche]
                         noeuds_demandes += [NoeudMaquette.noeuds[n].code for n in NoeudMaquette.noeuds if NoeudMaquette.noeuds[branche] in NoeudMaquette.noeuds[n].ascendants]
             else:
                 noeuds_demandes = []
