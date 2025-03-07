@@ -5,11 +5,12 @@ Objet       lire des maquettes depuis un fichier excel ou csv ou texte et le con
 Entrée      fichiers sources contenant la définition d'une maquette ou entrée standard
 Sortie      représentation JSON des maquettes trouvées dans les fichiers lus
 
-Usage       maquettes-xl2json.py [-n code,code,...] [-b] [-d] [fichier_excel[:i:j:k:...]] [fichier_excel[:i:j:k...]] ...
+Usage       maquettes-xl2json.py [-n code,code,...] [-b] [-d] [-l] [-g] [-c] [fichier_excel[:i:j:k:...]] [fichier_excel[:i:j:k...]] ...
   fichier   le nom du ou des fichiers à traiter, avec éventuellement l'index du ou des onglets ciblés
             (si non précisé, la cible est le premier onglet)
 
   -a        affiche une aide de type 'usage' consistant en les présentes lignes
+  -e        spécifie un fichier de définition des entêtes à prendre en compte
   -n        liste des codes à renvoyer au format JSON, séparés par une virgule - si non présent, renvoie toutes les racines trouvées
   -b        renvoie les maquettes encodées en base64
   -l        présence non obligatoire des libellés (un libellé type sera généré automatiquement)
@@ -23,11 +24,12 @@ alfredo.pereira@inalco.fr
 """
 
 usage="""
-Usage       {} [-n code,code,...] [-b] [-d] [fichier_excel[:i:j:k:...]] [fichier_excel[:i:j:k...]] ...
+Usage       {} [-n code,code,...] [-b] [-d] [-l] [-g] [-c] [fichier_excel[:i:j:k:...]] [fichier_excel[:i:j:k...]] ...
   fichier   le nom du ou des fichiers à traiter, avec éventuellement l'index du ou des onglets ciblés
             (si non précisé, la cible est le premier onglet)
 
   -a        affiche une aide de type 'usage' consistant en les présentes lignes
+  -e        spécifie un fichier de définition des entêtes à prendre en compte
   -n        liste des codes à renvoyer au format JSON, séparés par une virgule - si non présent, renvoie toutes les racines trouvées
   -b        renvoie les maquettes encodées en base64
   -l        présence non obligatoire des libellés (un libellé type sera généré automatiquement)
@@ -56,7 +58,6 @@ from python_calamine import CalamineWorkbook
 b64 = False             # correspond à l'option -b
 msgs = False            # correspond à l'option -d
 noeuds_demandes = []    # correspond à l'option -n
-headers_param = dict()  # correspond à l'option -h
 codes_seuls = False     # correspond à l'option -c
 verif_choix_groupements = False        # option -g
 
@@ -64,60 +65,63 @@ verif_choix_groupements = False        # option -g
 # Mapping des titres de colonnes dans un excel/csv avec les attributs d'un objet de la classe 'NoeudMaquette'
 #
 donnees_csv = {
-    'Type objet': 'type_noeud',
-    'Code objet': 'code',
-    'Libellé': 'libelle',
-    'Libellé long': 'libelle_long',
-    'Nature objet': 'nature',
-    'ECTS objet': 'ects',
-    'Plage MIN': 'plage_min',
-    'Plage MAX': 'plage_max',
-    'Code parent': 'code_parent',
-    'Obligatoire': 'obligatoire_parent',
-    'PIA': 'est_pia',
-    'Mutualisé': 'est_mutualise',
-    'Distanciel': 'est_distanciel',
-    'Stage': 'est_stage',
-    'Capacité accueil': 'capacite_accueil',
-    'Structure principale': 'structure_principale',
-    'ID objet': 'id_noeud',
-    'Type formation': 'type_formation',
-    'Syllabus - objectifs': 'syll_objectifs',
-    'Syllabus - description': 'syll_description',
-    'Syllabus - ouverture mobilité entrante': 'syll_ouverture_mobilite_entrante',
-    'Syllabus - langue enseignement': 'syll_langue_enseignement',
-    'Syllabus - prérequis': 'syll_prerequis_pedagogiques',
-    'Syllabus - bibliographie': 'syll_bibliographie',
-    'Syllabus - contacts': 'syll_contacts',
-    'Syllabus - autres informations': 'syll_autres_infos',
-    'Syllabus - modalités enseignement': 'syll_modalites_enseignement',
-    'Syllabus - volume horaire': 'syll_volume_horaire',
-    'Syllabus - coefficient': 'syll_coefficient',
-    'Syllabus - modalités évaluation': 'syll_modalites_eval',
-    'SISE - type diplôme': 'sise_type_diplome',
-    'SISE - code diplôme': 'sise_code_diplome',
-    'SISE - niveau diplôme SISE': 'sise_niveau_diplome_sise',
-    'SISE - parcours-type': 'sise_parcours_type',
-    'SISE - domaine formation': 'sise_domaine_formation',
-    'SISE - mention': 'sise_mention',
-    'SISE - champ formation': 'sise_champ_formation',
-    'SISE - niveau diplôme': 'sise_niveau_diplome',
-    'SISE - déclinaison': 'sise_declinaison',
-    'Aglae - habilité bourses': 'aglae_habilite_bourses',
-    'Aglae - niveau': 'aglae_niveau',
-    # 'Formation porteuse': 'formation_porteuse',
-    'Structures porteuses': 'structures_porteuses',
-    'Formats - modalités': 'formats_modalites',
-    'Formats - type heures': 'formats_type_heures',
-    'Formats - volume horaire': 'formats_heures',
-    'Formats - nombre groupes': 'formats_groupes',
-    'Formats - seuil dédoublement': 'formats_dedoublement'
+    'type objet': 'type_noeud',
+    'code objet': 'code',
+    'libellé': 'libelle',
+    'libellé long': 'libelle_long',
+    'nature objet': 'nature',
+    'ects objet': 'ects',
+    'plage min': 'plage_min',
+    'plage max': 'plage_max',
+    'code parent': 'code_parent',
+    'obligatoire': 'obligatoire_parent',
+    'pia': 'est_pia',
+    'mutualisé': 'est_mutualise',
+    'télé-enseignement': 'est_distanciel',
+    'distanciel': 'est_distanciel',
+    'stage': 'est_stage',
+    'capacité accueil': 'capacite_accueil',
+    'structure principale': 'structure_principale',
+    'id objet': 'id_noeud',
+    'type formation': 'type_formation',
+    'syllabus - objectifs': 'syll_objectifs',
+    'syllabus - description': 'syll_description',
+    'syllabus - ouverture mobilité entrante': 'syll_ouverture_mobilite_entrante',
+    'syllabus - langue enseignement': 'syll_langue_enseignement',
+    'syllabus - prérequis': 'syll_prerequis_pedagogiques',
+    'syllabus - bibliographie': 'syll_bibliographie',
+    'syllabus - contacts': 'syll_contacts',
+    'syllabus - autres informations': 'syll_autres_infos',
+    'syllabus - modalités enseignement': 'syll_modalites_enseignement',
+    'syllabus - volume horaire': 'syll_volume_horaire',
+    'syllabus - coefficient': 'syll_coefficient',
+    'syllabus - modalités évaluation': 'syll_modalites_eval',
+    'sise - type diplôme': 'sise_type_diplome',
+    'sise - code diplôme': 'sise_code_diplome',
+    'sise - niveau diplôme sise': 'sise_niveau_diplome_sise',
+    'sise - parcours-type': 'sise_parcours_type',
+    'sise - domaine formation': 'sise_domaine_formation',
+    'sise - mention': 'sise_mention',
+    'sise - champ formation': 'sise_champ_formation',
+    'sise - niveau diplôme': 'sise_niveau_diplome',
+    'sise - déclinaison': 'sise_declinaison',
+    'aglae - habilité bourses': 'aglae_habilite_bourses',
+    'aglae - niveau': 'aglae_niveau',
+    'fresq - numéro 1er niveau': 'fresq_niveau1',
+    'fresq - numéro 2nd niveau': 'fresq_niveau2',
+    # 'formation porteuse': 'formation_porteuse',
+    'structures porteuses': 'structures_porteuses',
+    'formats - modalités': 'formats_modalites',
+    'formats - type heures': 'formats_type_heures',
+    'formats - volume horaire': 'formats_heures',
+    'formats - nombre groupes': 'formats_groupes',
+    'formats - seuil dédoublement': 'formats_dedoublement'
 }
 
 #
 # Liste des noms de colonnes excel/csv/texte obligatoires
 #
-donnees_csv_obligatoires = ['Type objet', 'Code objet', 'Libellé']
+donnees_csv_obligatoires = ['type objet', 'code objet', 'libellé']
 
 #
 # Valeurs par défaut d'une ligne de données lue dans un fichier ou sur l'entrée standard
@@ -164,6 +168,8 @@ noeud_defaults = {
     'sise_declinaison': None,
     'aglae_habilite_bourses': False,
     'aglae_niveau': None,
+    'fresq_niveau1': None,
+    'fresq_niveau2': None,
     # 'formation_porteuse': None,
     'structures_porteuses': None,
     'formats_modalites': None,
@@ -177,6 +183,8 @@ noeud_defaults = {
 # Mapping de qq valeurs booléennes qu'on peut trouver dans un excel/csv
 #
 bool_equiv = {
+    'o'     : True,
+    'n'     : False,    
     'oui'   : True,
     'non'   : False,
     'false' : False,
@@ -228,6 +236,12 @@ class NoeudMaquette:
         except: pass
 
         try: val['structures_porteuses'] = val['structures_porteuses'].upper()
+        except: pass
+
+        try: val['fresq_niveau1'] = val['fresq_niveau1'].upper()
+        except: pass
+
+        try: val['fresq_niveau2'] = val['fresq_niveau2'].upper()
         except: pass
 
         #
@@ -320,7 +334,7 @@ class NoeudMaquette:
             }
 
             #
-            # Bloc Format des enseignements, obligatoire dans tous les objets maquettes, composé plus tard de 2 sous-blocs : Structures porteuses ET Format des enseignements
+            # Bloc Format des enseignements, obligatoire dans tous les objets maquettes semble-t-il,, composé plus tard de 2 sous-blocs : Structures porteuses ET Format des enseignements
             #
             self.formatsEnseignement = {
                 'formatsEnseignement': []
@@ -340,6 +354,12 @@ class NoeudMaquette:
             # Initialisation de la propriété contextes de l'objet maquette
             #
             self.contextes = []
+
+            #
+            # Initialisation des relations de ce noeud à chacun de ses parents (obligatoire ou pas)
+            #
+            self.relations_parents = dict()
+
 
 
         #
@@ -387,9 +407,9 @@ class NoeudMaquette:
                         'descripteursSyllabus':         o.descripteursSyllabus,
                         'descripteursEnquete':          o.descripteursEnquete,
                         'formatsEnseignement':          o.formatsEnseignement,
-                        'enfants':                      [{'obligatoire':True,'objetMaquette':e} for e in o.enfants]
+                        'enfants':                      [{'obligatoire':e.relations_parents[o.code],'objetMaquette':e} for e in o.enfants]
                     }
-                elif isinstance(o, NoeudMaquette):
+                elif isinstance(o, NoeudMaquette) or isinstance(o, NoeudGroupement):
                     return {
                         'id':           o.id,
                         'code':         o.code,
@@ -399,7 +419,7 @@ class NoeudMaquette:
                         'descripteursObjetMaquette':    o.descripteursObjetMaquette,
                         'descripteursEnquete':          o.descripteursEnquete,
                         'formatsEnseignement':          o.formatsEnseignement,
-                        'enfants':                      [{'obligatoire':True,'objetMaquette':e} for e in o.enfants]
+                        'enfants':                      [{'obligatoire':e.relations_parents[o.code],'objetMaquette':e} for e in o.enfants]
                     }
 
                 return super().default(o)
@@ -419,6 +439,7 @@ class NoeudMaquette:
             raise ValueError('Le noeud ' + str(enfant.code) + ' ne peut devenir enfant de l\'un de ses descendants')
 
         parent.enfants.add(enfant)
+        enfant.relations_parents[parent.code] = val['obligatoire_parent']
         enfant.ascendants.add(parent)
         enfant.ascendants |= parent.ascendants
         enfant.contextes += [ContexteNoeud(val, enfant.code, c.chemin + [enfant.id]) for c in parent.contextes]
@@ -439,6 +460,12 @@ class FormatEnseignement:
                 try: self.volumeHoraire = int(valf['formats_heures'][0]) * 3600 + int(valf['formats_heures'][1]) * 60
                 except: pass
                 break
+        else:
+            if ',' in valf['formats_heures']: valf['formats_heures'] = '.'.join(valf['formats_heures'].split(','))
+
+            try: self.volumeHoraire = int(float(valf['formats_heures']) // 1) * 3600 + int((int((float(valf['formats_heures']) % 1) * 100) // 1) * 0.6 * 60)
+            except: pass
+
 
         try: self.nombreTheoriqueDeGroupes = int(valf['formats_groupes'])
         except: self.nombreTheoriqueDeGroupes = 1
@@ -560,6 +587,10 @@ class NoeudFormation(NoeudMaquette):
                 'habilitePourBoursesAglae': val['aglae_habilite_bourses'],
                 'niveauAglae': val['aglae_niveau']
             },
+            'enqueteFresq': {
+                'numeroFresqNiveau1': val['fresq_niveau1'],
+                'numeroFresqNiveau2': val['fresq_niveau2']
+            },
             'enqueteSise': {
                 'typeDiplome': val['sise_type_diplome'],
                 'codeDiplomeSise': val['sise_code_diplome'],
@@ -577,17 +608,17 @@ class NoeudFormation(NoeudMaquette):
         # Construire la liste des structures porteuses et l'insérer dans l'objet maquette (sous la partie 'formatsEnseignement')
         #
         if val['structures_porteuses']:
-            self.formatsEnseignement['structuresPorteuse'] = val['structures_porteuses'].split(',')
+            self.formatsEnseignement['structuresPorteuse'] = val['structures_porteuses'].split(';')
 
         #
         # Construire la liste des formats d'enseignement et les insérer dans l'objet maquette (sous la partie 'formatsEnseignement')
         #
-        if val['formats_modalites']:
+        if val['formats_type_heures']:
             # Détecter si plusieurs formats d'enseignement sont spécifiés
 
             val_formats = dict()
             for k in ['formats_modalites', 'formats_type_heures', 'formats_heures', 'formats_groupes', 'formats_dedoublement']:
-                val_formats[k] = val[k].split(',') if val[k] else []
+                val_formats[k] = val[k].split(';') if val[k] else []
 
             nombre_formats = max(len(v) for v in val_formats.values())
 
@@ -639,6 +670,10 @@ class NoeudObjetFormation(NoeudMaquette):
                 'habilitePourBoursesAglae': val['aglae_habilite_bourses'],
                 'niveauAglae': val['aglae_niveau']
             },
+            'enqueteFresq': {
+                'numeroFresqNiveau1': val['fresq_niveau1'],
+                'numeroFresqNiveau2': val['fresq_niveau2']
+            },
             'enqueteSise': {
                 'typeDiplome': val['sise_type_diplome'],
                 'codeDiplomeSise': val['sise_code_diplome'],
@@ -656,17 +691,17 @@ class NoeudObjetFormation(NoeudMaquette):
         # Construire la liste des structures porteuses et l'insérer dans l'objet maquette (sous la partie 'formatsEnseignement')
         #
         if val['structures_porteuses']:
-            self.formatsEnseignement['structuresPorteuse'] = val['structures_porteuses'].split(',')
+            self.formatsEnseignement['structuresPorteuse'] = val['structures_porteuses'].split(';')
 
         #
         # Construire la liste des formats d'enseignement et les insérer dans l'objet maquette (sous la partie 'formatsEnseignement')
         #
-        if val['formats_modalites']:
+        if val['formats_type_heures']:
             # Détecter si plusieurs formats d'enseignement sont spécifiés
 
             val_formats = dict()
             for k in ['formats_modalites', 'formats_type_heures', 'formats_heures', 'formats_groupes', 'formats_dedoublement']:
-                val_formats[k] = val[k].split(',') if val[k] else []
+                val_formats[k] = val[k].split(';') if val[k] else []
 
             nombre_formats = max(len(v) for v in val_formats.values())
 
@@ -684,30 +719,25 @@ def process_line(ligne, headers_courants):
     """Traiter une ligne de fichier spécifiant les données d'un noeud de maquette en tant que liste"""
 
     #
-    # Utiliser en priorité les headers fournis dans la commande, si présents
+    # Tester si la ligne courante est une ligne de headers - critère : la ligne contient les libellés des données obligatoires
     #
-    if headers_param:
-        headers_courants = headers_param
-    else:
+    if [True for d in donnees_csv_obligatoires if d in list(map(lambda l: l.lower(), ligne))] == [True] * len(donnees_csv_obligatoires):
+        if msgs: print('Détection d\'une ligne de header', file=sys.stderr)
+
+        headers_courants.clear()
+
         #
-        # Tester si la ligne courante est une ligne de headers - critère : la ligne contient les libellés des données obligatoires
+        # Construction de l'index des données se trouvant dans le fichier source
         #
-        if [True for d in donnees_csv_obligatoires if d in ligne] == [True] * len(donnees_csv_obligatoires):
-            if msgs: print('Détection d\'une ligne de header', file=sys.stderr)
+        for i, x in enumerate(ligne):
+            x = x.lower()
+            if donnees_csv.get(x): headers_courants[donnees_csv[x]] = i
 
-            headers_courants.clear()
-
-            #
-            # Construction de l'index des données se trouvant dans le fichier source
-            #
-            for i, x in enumerate(ligne):
-                if donnees_csv.get(x): headers_courants[donnees_csv[x]] = i
-
-            if msgs: print('Colonnes détectées :', headers_courants)
-            return
+        if msgs: print('Colonnes détectées :', headers_courants, file=sys.stderr,)
+        return
 
     if not headers_courants:
-        if msgs: print(ligne, ': ligne ignorée car aucun header n\'a été défini dans cette passe', file=sys.stderr)
+        if msgs: print('Ligne ignorée, pas d\'entêtes encore défini', file=sys.stderr)
         return
 
     #
@@ -738,7 +768,7 @@ def process_line(ligne, headers_courants):
     if type_noeud:
         type_noeud = type_noeud.upper()
     else:
-        if msgs: print(ligne, ': ligne ignorée car pas de type d\'objet de formation indiqué', file=sys.stderr)
+        if msgs: print('Ligne ignorée car sans type d\'objet', file=sys.stderr)
         return
 
     #
@@ -758,6 +788,35 @@ def process_line(ligne, headers_courants):
 
 
 
+def maj_entetes(fichier):
+    """Mettre à jour la liste des entêtes (ie des noms de colonnes) par défaut contenant les données à importer"""
+
+    global donnees_csv, donnees_csv_obligatoires
+
+    try:
+        workbook = CalamineWorkbook.from_path(fichier)
+    except:
+        print('Impossible d\'ouvrir le fichier', fichier, ': les entêtes par défaut seront utilisés', file=sys.stderr)
+    else:
+        lignes = iter(workbook.get_sheet_by_name(workbook.sheet_names[0]).to_python())
+
+        for ligne in lignes:
+            # Stripper les chaînes de caractères
+            ligne = list(map(lambda l: l.lower().strip() if isinstance(l, str) else l, ligne))
+
+            # Convertir en chaîne de caractères les nombres éventuels
+            ligne = list(map(lambda x: str(int(x)) if isinstance(x, float) and x.is_integer() else str(x), ligne))
+
+            if ligne[1] and ligne[0] in donnees_csv:
+                donnees_csv[ligne[1]] = donnees_csv[ligne[0]]
+                del donnees_csv[ligne[0]]
+
+                if ligne[0] in donnees_csv_obligatoires:
+                    donnees_csv_obligatoires += [ligne[1]]
+                    donnees_csv_obligatoires.remove(ligne[0])
+
+
+
 def main():
     ############################################################
     # Traitement de la commande et de ses paramètres éventuels #
@@ -770,7 +829,7 @@ def main():
     # Parser les arguments de la commande avec le module getopt
     #
     try:
-        opts, args = getopt.gnu_getopt(argv[1:], "an:bdh:lgc")
+        opts, args = getopt.gnu_getopt(argv[1:], "an:bdlgce:")
     except:
         print(usage.format(commande).strip(), file=sys.stderr)
         sys.exit(1)
@@ -779,7 +838,7 @@ def main():
     #
     # Paramètres généraux de la commande
     #
-    global b64, msgs, noeuds_demandes, headers_param, verif_choix_groupements, codes_seuls, donnees_csv_obligatoires
+    global b64, msgs, noeuds_demandes, verif_choix_groupements, codes_seuls, donnees_csv_obligatoires
 
 
     #
@@ -796,7 +855,7 @@ def main():
             msgs = True
 
         elif opt == '-l':
-            donnees_csv_obligatoires = ['Type objet', 'Code objet']
+            donnees_csv_obligatoires.remove('libellé')
 
         elif opt == '-g':
             verif_choix_groupements = True
@@ -804,17 +863,8 @@ def main():
         elif opt == '-c':
             codes_seuls = True
 
-        elif opt == '-h':
-            param_h = []
-
-            for i in arg.split(','):
-                if i.isdigit():
-                    param_h.append(int(i)-1)
-                else:
-                    param_h.append('')
-
-            headers_param = dict(zip(['type_noeud', 'nature', 'code', 'libelle', 'libelle_long', 'ects', 'code_parent', 'plage_min', 'plage_max'], param_h))
-            for delh in [h for h in headers_param if not isinstance(headers_param[h], int)]: del headers_param[delh]
+        elif opt == '-e':
+            maj_entetes(arg)
 
         elif opt == '-a':
             print(usage.format(commande).strip())
@@ -829,13 +879,6 @@ def main():
     ###############################
 
     headers_courants = dict()
-
-    if msgs:
-        if headers_param:
-            print('Le traitement du fichier se fera suivant', headers_param, file=sys.stderr)
-        else:
-            print('Le traitement du fichier se fera suivant les headers rencontrés dans les fichiers', file=sys.stderr)
-
 
     #
     # Si pas de fichier spécifié en commande, on se branche sur l'entrée standard
@@ -874,8 +917,6 @@ def main():
                 continue
 
 
-            if msgs: print('Lecture du fichier', nom_fichier, file=sys.stderr)
-
             #
             # Chercher l'extension du fichier pour déterminer son format --> texte, csv, excel
             #
@@ -897,9 +938,9 @@ def main():
                     fichier.close()
 
             #
-            # Si l'extension commence par 'xl', supposons que c'est bien un fichier excel
+            # Supposons ici le fichier est bien un excel qui peut s'ouvrir avec Calamine
             #
-            elif extension[1:3].lower() == 'xl':
+            else:
                 try:
                     workbook = CalamineWorkbook.from_path(nom_fichier)
                 except:
@@ -943,7 +984,7 @@ def main():
                     # Traitement des onglets du fichier courant
                     #
                     if onglets_cibles:
-                        if msgs: print(nom_fichier, ': les onglets traités sont', onglets_cibles, file=sys.stderr)
+                        if msgs: print('Onglets qui seront traités :', onglets_cibles, file=sys.stderr)
 
                         for onglet in onglets_cibles:
                             lignes = iter(workbook.get_sheet_by_name(onglet).to_python())
@@ -965,9 +1006,6 @@ def main():
                     else:
                         if msgs: print(nom_fichier, ': aucun onglet à traiter', file=sys.stderr)
 
-
-            else:
-                print(nom_fichier, ': fichier non traité car ayant une extension non reconnue', file=sys.stderr)
 
 
     ################################
