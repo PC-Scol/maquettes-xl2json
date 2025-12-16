@@ -19,7 +19,7 @@ Usage       maquettes-xl2json.py [-n code,code,...] [-b] [-d] [-l] [-g] [-c] [fi
   -c        affiche seulement les codes, sans construire d'objet json
 
 Auteur
-Alfredo Pereira - 09/24
+Alfredo Pereira - 12/25
 alfredo.pereira@inalco.fr
 """
 
@@ -59,6 +59,7 @@ b64 = False             # correspond à l'option -b
 msgs = False            # correspond à l'option -d
 noeuds_demandes = []    # correspond à l'option -n
 codes_seuls = False     # correspond à l'option -c
+keep_mem = False        # correspond à l'option -m
 verif_choix_groupements = False        # option -g
 
 #
@@ -98,6 +99,7 @@ donnees_csv = {
     'syllabus - modalités évaluation': 'syll_modalites_eval',
     'sise - type diplôme': 'sise_type_diplome',
     'sise - code diplôme': 'sise_code_diplome',
+    'sise - code diplôme intermédiaire': 'sise_code_diplome_intermediaire',
     'sise - niveau diplôme sise': 'sise_niveau_diplome_sise',
     'sise - parcours-type': 'sise_parcours_type',
     'sise - domaine formation': 'sise_domaine_formation',
@@ -159,6 +161,7 @@ noeud_defaults = {
     'syll_modalites_eval': None,
     'sise_type_diplome': None,
     'sise_code_diplome': None,
+    'sise_code_diplome_intermediaire': None,
     'sise_niveau_diplome_sise': None,
     'sise_parcours_type': None,
     'sise_domaine_formation': None,
@@ -227,6 +230,9 @@ class NoeudMaquette:
         val['code'] = val['code'].upper()
  
         try: val['code_parent'] = val['code_parent'].upper()
+        except: pass
+
+        try: val['nature'] = val['nature'].upper()
         except: pass
 
         try: val['formats_type_heures'] = val['formats_type_heures'].upper()
@@ -429,6 +435,7 @@ class NoeudMaquette:
         #
         return  json.dumps(self, cls=NoeudMaquetteEncoder, separators=(',', ':'))
 
+
     def creer_enfant(parent, enfant, val):
         #
         # Création d'un lien parent-enfant entre deux noeuds
@@ -443,6 +450,10 @@ class NoeudMaquette:
         enfant.ascendants.add(parent)
         enfant.ascendants |= parent.ascendants
         enfant.contextes += [ContexteNoeud(val, enfant.code, c.chemin + [enfant.id]) for c in parent.contextes]
+
+
+    def purger_noeuds():
+        NoeudMaquette.noeuds.clear()
 
 
 class FormatEnseignement:
@@ -488,12 +499,15 @@ class ContexteNoeud:
 
             # Accepter les valeurs d'un contexte, si le noeud est déjà connu et si la valeur fournie est différente de la valeur par défaut
             if code in NoeudMaquette.noeuds:
-                self.descripteursGroupementContexte = dict()
-                plage_de_choix = {'min': val['plage_min'], 'max': val['plage_max']}
                 plage_de_choix_vide = {'min': None, 'max': None}
+                plage_de_choix = {'min': val['plage_min'], 'max': val['plage_max']}
+                self.descripteursGroupementContexte = {'nature': None, 'plageDeChoix': plage_de_choix_vide.copy()}
 
-                self.descripteursGroupementContexte['plageDeChoix'] = plage_de_choix.copy() if NoeudMaquette.noeuds[code].descripteursObjetMaquette['plageDeChoix'] != plage_de_choix else plage_de_choix_vide.copy()
-                self.descripteursGroupementContexte['natureGroupement'] = val['nature'] if NoeudMaquette.noeuds[code].descripteursObjetMaquette['nature'] != val['nature'] else None
+                if 'plageDeChoix' in NoeudMaquette.noeuds[code].descripteursObjetMaquette and NoeudMaquette.noeuds[code].descripteursObjetMaquette['plageDeChoix'] != plage_de_choix:
+                    self.descripteursGroupementContexte['plageDeChoix'] = plage_de_choix.copy()
+
+                if 'nature' in NoeudMaquette.noeuds[code].descripteursObjetMaquette:
+                    self.descripteursGroupementContexte['natureGroupement'] = val['nature'] if NoeudMaquette.noeuds[code].descripteursObjetMaquette['nature'] != val['nature'] else None
 
                 # Simplifier l'objet maquette si pas de changement par rapport aux valeurs par défaut
                 if (not self.descripteursGroupementContexte['natureGroupement']) and (self.descripteursGroupementContexte['plageDeChoix'] == plage_de_choix_vide):
@@ -504,10 +518,12 @@ class ContexteNoeud:
 
             # Accepter les valeurs d'un contexte, si le noeud est déjà connu et si la valeur fournie est différente de la valeur par défaut
             if code in NoeudMaquette.noeuds:
-                self.descripteursObjetFormationContexte = dict()
+                self.descripteursObjetFormationContexte = {'ects': None, 'nature': None}
 
-                self.descripteursObjetFormationContexte['ects'] = val['ects'] if val['ects'] != NoeudMaquette.noeuds[code].descripteursObjetMaquette['ects'] else None
-                self.descripteursObjetFormationContexte['nature'] = val['nature'] if val['nature'] != NoeudMaquette.noeuds[code].descripteursObjetMaquette['nature'] else None
+                if 'ects' in val and 'ects' in NoeudMaquette.noeuds[code].descripteursObjetMaquette:
+                    self.descripteursObjetFormationContexte['ects'] = val['ects'] if val['ects'] != NoeudMaquette.noeuds[code].descripteursObjetMaquette['ects'] else None
+                if 'nature' in val and 'nature' in NoeudMaquette.noeuds[code].descripteursObjetMaquette:
+                    self.descripteursObjetFormationContexte['nature'] = val['nature'] if val['nature'] != NoeudMaquette.noeuds[code].descripteursObjetMaquette['nature'] else None
 
                 # Simplifier l'objet maquette si pas de changement par rapport aux valeurs par défaut
                 if (not self.descripteursObjetFormationContexte['ects']) and (not self.descripteursObjetFormationContexte['nature']):
@@ -594,6 +610,7 @@ class NoeudFormation(NoeudMaquette):
             'enqueteSise': {
                 'typeDiplome': val['sise_type_diplome'],
                 'codeDiplomeSise': val['sise_code_diplome'],
+                'codeDiplomeIntermediaireSise': val['sise_code_diplome_intermediaire'],
                 'niveauDiplomeSise': val['sise_niveau_diplome_sise'],
                 'parcoursTypeSise': val['sise_parcours_type'],
                 'domaineFormation': val['sise_domaine_formation'],
@@ -677,6 +694,7 @@ class NoeudObjetFormation(NoeudMaquette):
             'enqueteSise': {
                 'typeDiplome': val['sise_type_diplome'],
                 'codeDiplomeSise': val['sise_code_diplome'],
+                'codeDiplomeIntermediaireSise': val['sise_code_diplome_intermediaire'],
                 'niveauDiplomeSise': val['sise_niveau_diplome_sise'],
                 'parcoursTypeSise': val['sise_parcours_type'],
                 'domaineFormation': val['sise_domaine_formation'],
@@ -733,8 +751,15 @@ def process_line(ligne, headers_courants):
             x = x.lower()
             if donnees_csv.get(x): headers_courants[donnees_csv[x]] = i
 
-        if msgs: print('Colonnes détectées :', headers_courants, file=sys.stderr,)
+
+        if not keep_mem:
+            afficher_racines(noeuds_demandes, b64, codes_seuls)
+            NoeudMaquette.purger_noeuds()
+
+        if msgs: print('Colonnes détectées :', headers_courants, file=sys.stderr)
+
         return
+
 
     if not headers_courants:
         if msgs: print('Ligne ignorée, pas d\'entêtes encore défini', file=sys.stderr)
@@ -816,6 +841,55 @@ def maj_entetes(fichier):
                     donnees_csv_obligatoires.remove(ligne[0])
 
 
+def afficher_racines(noeuds_demandes, b64, codes_seuls):
+    #
+    # Si pas d'option -n, affichage de tous les noeuds racines rencontrés dans les fichiers ou sur l'entrée standard
+    #
+    if noeuds_demandes:
+        if len(noeuds_demandes)>1 or ':' not in noeuds_demandes[0]:
+            noeuds_demandes = [n for n in noeuds_demandes if n in NoeudMaquette.noeuds]
+        else:
+            noeuds_demandes = noeuds_demandes[0].split(':')
+            type_fonction = noeuds_demandes[0]
+            fonc_demandes = noeuds_demandes[1:]
+
+            if type_fonction == 'F': # F comme filtre
+                if fonc_demandes[0] != '':
+                    noeuds_demandes = [NoeudMaquette.noeuds[n].code for n in NoeudMaquette.noeuds if NoeudMaquette.noeuds[n].type_noeud in fonc_demandes]
+                else:
+                    noeuds_demandes = [NoeudMaquette.noeuds[n].code for n in NoeudMaquette.noeuds]
+            elif type_fonction == 'B': # B comme branche
+                noeuds_demandes = []
+                for branche in fonc_demandes:
+                    if NoeudMaquette.noeuds.get(branche):
+                        noeuds_demandes += [branche]
+                        noeuds_demandes += [NoeudMaquette.noeuds[n].code for n in NoeudMaquette.noeuds if NoeudMaquette.noeuds[branche] in NoeudMaquette.noeuds[n].ascendants]
+            else:
+                noeuds_demandes = []
+    else:
+        #
+        # Les racines sont des noeuds avec un ensemble d'ascendants vide, ie de cardinal zéro
+        #
+        noeuds_demandes = [NoeudMaquette.noeuds[n].code for n in NoeudMaquette.noeuds if len(NoeudMaquette.noeuds[n].ascendants) == 0]
+
+    for n in noeuds_demandes:
+        if b64:
+            #
+            # Compression de la donnée chargée (gzip) puis encodage en base 64 du résultat
+            #
+            compressor = zlib.compressobj(wbits=25)
+            data = str(NoeudMaquette.noeuds[n]).encode()
+            dataz = compressor.compress(data)
+            dataz += compressor.flush()
+            dataz = base64.b64encode(dataz).decode()
+            print(dataz)
+
+        elif codes_seuls:
+            print(NoeudMaquette.noeuds[n].code)
+        else:
+            print(NoeudMaquette.noeuds[n])
+
+
 
 def main():
     ############################################################
@@ -829,7 +903,7 @@ def main():
     # Parser les arguments de la commande avec le module getopt
     #
     try:
-        opts, args = getopt.gnu_getopt(argv[1:], "an:bdlgce:")
+        opts, args = getopt.gnu_getopt(argv[1:], "an:bdlgcpe:")
     except:
         print(usage.format(commande).strip(), file=sys.stderr)
         sys.exit(1)
@@ -838,7 +912,7 @@ def main():
     #
     # Paramètres généraux de la commande
     #
-    global b64, msgs, noeuds_demandes, verif_choix_groupements, codes_seuls, donnees_csv_obligatoires
+    global b64, msgs, noeuds_demandes, verif_choix_groupements, codes_seuls, donnees_csv_obligatoires, keep_mem
 
 
     #
@@ -865,6 +939,9 @@ def main():
 
         elif opt == '-e':
             maj_entetes(arg)
+
+        elif opt == '-m':
+            keep_mem = True
 
         elif opt == '-a':
             print(usage.format(commande).strip())
@@ -1012,52 +1089,7 @@ def main():
     # Fin de traitement, affichage #
     ################################
 
-    #
-    # Si pas d'option -n, affichage de tous les noeuds racines rencontrés dans les fichiers ou sur l'entrée standard
-    #
-    if noeuds_demandes:
-        if len(noeuds_demandes)>1 or ':' not in noeuds_demandes[0]:
-            noeuds_demandes = [n for n in noeuds_demandes if n in NoeudMaquette.noeuds]
-        else:
-            noeuds_demandes = noeuds_demandes[0].split(':')
-            type_fonction = noeuds_demandes[0]
-            fonc_demandes = noeuds_demandes[1:]
-
-            if type_fonction == 'F': # F comme filtre
-                if fonc_demandes[0] != '':
-                    noeuds_demandes = [NoeudMaquette.noeuds[n].code for n in NoeudMaquette.noeuds if NoeudMaquette.noeuds[n].type_noeud in fonc_demandes]
-                else:
-                    noeuds_demandes = [NoeudMaquette.noeuds[n].code for n in NoeudMaquette.noeuds]
-            elif type_fonction == 'B': # B comme branche
-                noeuds_demandes = []
-                for branche in fonc_demandes:
-                    if NoeudMaquette.noeuds.get(branche):
-                        noeuds_demandes += [branche]
-                        noeuds_demandes += [NoeudMaquette.noeuds[n].code for n in NoeudMaquette.noeuds if NoeudMaquette.noeuds[branche] in NoeudMaquette.noeuds[n].ascendants]
-            else:
-                noeuds_demandes = []
-    else:
-        #
-        # Les racines sont des noeuds avec un ensemble d'ascendants vide, ie de cardinal zéro
-        #
-        noeuds_demandes = [NoeudMaquette.noeuds[n].code for n in NoeudMaquette.noeuds if len(NoeudMaquette.noeuds[n].ascendants) == 0]
-
-    for n in noeuds_demandes:
-        if b64:
-            #
-            # Compression de la donnée chargée (gzip) puis encodage en base 64 du résultat
-            #
-            compressor = zlib.compressobj(wbits=25)
-            data = str(NoeudMaquette.noeuds[n]).encode()
-            dataz = compressor.compress(data)
-            dataz += compressor.flush()
-            dataz = base64.b64encode(dataz).decode()
-            print(dataz)
-
-        elif codes_seuls:
-            print(NoeudMaquette.noeuds[n].code)
-        else:
-            print(NoeudMaquette.noeuds[n])
+    afficher_racines(noeuds_demandes, b64, codes_seuls)
 
     #
     # Fin de main()
