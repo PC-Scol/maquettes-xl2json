@@ -13,7 +13,6 @@ Usage       maquettes-xl2json.py [-n code,code,...] [-b] [-d] [-l] [-g] [-c] [fi
   -e        spécifie un fichier de définition des entêtes à prendre en compte
   -n        liste des codes à renvoyer au format JSON, séparés par une virgule - si non présent, renvoie toutes les racines trouvées
   -b        renvoie les maquettes encodées en base64
-  -l        présence non obligatoire des libellés (un libellé type sera généré automatiquement)
   -d        affiche des messages d'info pour suivre le déroulé de l'execution de la commande
   -g        la construction de maquette échoue dès lors qu'un groupement est spécifié sans plage de choix
   -c        affiche seulement les codes, sans construire d'objet json
@@ -32,7 +31,6 @@ Usage       {} [-n code,code,...] [-b] [-d] [-l] [-g] [-c] [fichier_excel[:i:j:k
   -e        spécifie un fichier de définition des entêtes à prendre en compte
   -n        liste des codes à renvoyer au format JSON, séparés par une virgule - si non présent, renvoie toutes les racines trouvées
   -b        renvoie les maquettes encodées en base64
-  -l        présence non obligatoire des libellés (un libellé type sera généré automatiquement)
   -d        affiche des messages d'info pour suivre le déroulé de l'execution de la commande
   -g        la construction de maquette échoue dès lors qu'un groupement est spécifié sans plage de choix
   -c        affiche seulement les codes, sans construire d'objet json
@@ -123,7 +121,7 @@ donnees_csv = {
 #
 # Liste des noms de colonnes excel/csv/texte obligatoires
 #
-donnees_csv_obligatoires = ['type objet', 'code objet', 'libellé']
+donnees_csv_obligatoires = ['type objet', 'code objet']
 
 #
 # Valeurs par défaut d'une ligne de données lue dans un fichier ou sur l'entrée standard
@@ -272,7 +270,8 @@ class NoeudMaquette:
         # Libellé automatique si l'option -l est activée
         #
         if not val['libelle']:
-            val['libelle'] = 'Objet de type ' + val['type_noeud'] + ' et de code ' + val['code']
+            if not val['libelle_long']: val['libelle'] = 'Objet de type ' + val['type_noeud'] + ' et de code ' + val['code']
+            else: val['libelle'] = val['libelle_long']
 
         #
         # Dupliquer le libellé si le libellé long est absent des données
@@ -903,7 +902,7 @@ def main():
     # Parser les arguments de la commande avec le module getopt
     #
     try:
-        opts, args = getopt.gnu_getopt(argv[1:], "an:bdlgcpe:")
+        opts, args = getopt.gnu_getopt(argv[1:], "an:bdgcpe:")
     except:
         print(usage.format(commande).strip(), file=sys.stderr)
         sys.exit(1)
@@ -927,9 +926,6 @@ def main():
 
         elif opt == '-d':
             msgs = True
-
-        elif opt == '-l':
-            donnees_csv_obligatoires.remove('libellé')
 
         elif opt == '-g':
             verif_choix_groupements = True

@@ -15,12 +15,9 @@ Précision sur la fonction d'import de maquettes de Pégase : cette dernière ne
 
 > [!NOTE]
 > Notes de mise à jour :
-> - Script testé sur la R27 de Pégase
-> - Ajout de la possibilité d'injecter le type de liaison d'un élément à son parent (obligatoire/facultatif)
-> - Ajout des nouveaux champs d'injection relatifs aux informations Fresq
-> - Ajout des champs d'injection relatifs aux formats d'enseignements (sauf les formations porteuses)
-> - Ajout de la possibilité d'adapter, dans les Excels de maquettes, les libellés des colonnes, via un fichier d'entêtes (voir l'exemple fourni ici : <i>Entetes-exemple.xlsx</i>)
-> Pour tous les points ci-dessus, n'hésitez pas à vous référer au fichier explicatif maquette-type.xlsx.
+> - Script testé sur la R29 de Pégase
+> - Ajout de la donnée "Sise - Code diplôme intermédiaire" dans le format d'injection
+> - N'hésitez pas à vous référer au fichier explicatif maquette-type.xlsx
 
 <p>&nbsp;</p>
 
@@ -56,7 +53,6 @@ Par ailleurs, la commande peut contenir les paramètres suivants :
 | -e | Spécifie un fichier de définition des entêtes à prendre en compte |
 | -n | Spécifie la liste des maquettes à renvoyer au format JSON (séparées par des virgules).<br>Si l'option n'est pas présente, toutes les racines (ie les noeuds de maquette sans parents) sont renvoyées |
 | -b | Convertit chaque maquette du flux de sortie en base64 |
-| -l | Libellés non obligatoires (un libellé type sera généré automatiquement pour l'import)
 | -d | Affiche des messages d'information pour suivre le déroulé de l'execution de la commande |
 | -g | Vérifie que les objets de type GROUPEMENT ont bien une plage de choix spécifiée, le script échoue si ce n'est pas le cas
 | -c | Utilitaire : renvoie la liste des codes trouvés en entrée (fichiers Excel, textes ou entrée standard)
@@ -68,10 +64,11 @@ Le format Excel des maquettes est flexible. Les colonnes attendues obligatoireme
 <ul>
   <li>La colonne <bold><i>Type objet</i></bold></li>
   <li>La colonne <bold><i>Code objet</i></bold></li>
-  <li>La colonne <bold><i>Libellé </i></bold> (celle-ci pouvant être rendue optionnelle via l'option de commande <bold><i>-l</i></bold>)</li>
 </ul>
 
 Toutes les autres colonnes sont optionnelles.<br>
+Si les libellés des objets maquettes ne sont pas précisés dans le fichier, un libellé sera généré automatiquement.<br>
+Si seul l'un des deux libellés est présent, le libellé absent sera une copie du libellé précisé (éventuellement tronqué).<br>
 Par ailleurs, l'ordre des colonnes n'est pas figé et d'autres colonnes (commentaires, formules, zones de validation, bref tout ce qu'Excel sait si bien faire) peuvent être insérées là où cela vous est nécessaire. La seule contrainte est de garder le bon entête de colonne (le libellé sur fond bleu dans la maquette type).
 
 <p>&nbsp;</p>
