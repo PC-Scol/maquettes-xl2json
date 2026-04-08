@@ -459,8 +459,8 @@ class FormatEnseignement:
     def __init__(self, valf):
         self.id = str(uuid.uuid4()).lower()
         self.version = 0
-        self.modalite = valf['formats_modalites']
-        self.typeHeure = valf['formats_type_heures']
+        self.modalite = valf['formats_modalites'] or None
+        self.typeHeure = valf['formats_type_heures'] or None
 
         self.volumeHoraire = 0
         for s in ['h', 'H', ':']:
