@@ -147,7 +147,7 @@ noeud_defaults = {
     'type_formation': '0',
     'syll_objectifs': None,
     'syll_description': None,
-    'syll_ouverture_mobilite_entrante': None,
+    'syll_ouverture_mobilite_entrante': False,
     'syll_langue_enseignement': None,
     'syll_prerequis_pedagogiques': None,
     'syll_bibliographie': None,
